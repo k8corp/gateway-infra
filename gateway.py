@@ -4,50 +4,6 @@ import pyunycode
 
 separator = "---"
 
-gateway_t = """
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
-    kubernetes.io/metadata.name: gateway-infra
-    project: gateway-infra
-  name: gateway-infra
-"""
-
-secret_t = """
-apiVersion: v1
-kind: Secret
-metadata:
-  name: cloudflare-api-token
-  namespace: gateway-infra
-type: Opaque
-stringData:
-  api-token: ${api_token}
-"""
-
-issuer_t = """
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: acme-cert-issuer
-  namespace: gateway-infra
-spec:
-  acme:
-    # The ACME server URL
-    server: https://acme-v02.api.letsencrypt.org/directory
-    # Email address used for ACME registration
-    email: ${email}
-    # Name of a secret used to store the ACME account private key
-    privateKeySecretRef:
-      name: acme-cert-issuer-pk
-    solvers:
-    - dns01:
-        cloudflare:
-          apiTokenSecretRef:
-            name: cloudflare-api-token
-            key: api-token
-"""
-
 certificate_t = """
 apiVersion: cert-manager.io/v1
 kind: Certificate
@@ -110,18 +66,6 @@ def format(tmpl, **kwargs):
     return Template(tmpl).safe_substitute(kwargs).strip('\n')
 
 
-def gen_namespace(domain_list, data):
-    yield gateway_t.strip('\n')
-
-
-def get_secret(domain_list, data):
-    yield format(secret_t, api_token=data["api_token"])
-
-
-def gen_issuer(domain_list, data):
-    yield format(issuer_t, email=data["email"])
-
-
 def gen_certificates(domain_list, data):
     dot = data["dot"]
     for domain in domain_list:
@@ -149,9 +93,6 @@ def gen_gateway_collector(domain_list, data):
 
 
 resource_map = {
-    "namespace": gen_namespace,
-    "secret": get_secret,
-    "issuer": gen_issuer,
     "certificates": gen_certificates,
     "gateway": gen_gateway_collector
 }
@@ -194,18 +135,6 @@ def generate(args):
 
     resources = parse_tokens(args.resources)
 
-    if "issuer" in resources:
-        email = args.email
-        if email == None:
-            email = input("Enter email for ACME account: ")
-        data["email"] = email
-
-    if "secret" in resources:
-        api_token = args.api_token
-        if api_token == None:
-            api_token = input("Enter API-TOKEN of Cloudflare account: ")
-        data["api_token"] = api_token
-
     domain_list = []
     if "certificates" in resources or "gateway" in resources:
         domain_list = args.domains
@@ -230,9 +159,7 @@ if __name__ == "__main__":
                     epilog='Copyright (C) Karagatan, LLC.')
     parser.add_argument("--domains", type=str, default='', help='comma separated domain list')
     parser.add_argument("--domains_file", type=str, default='', help='file containing line separated domain list')
-    parser.add_argument("--resources", type=str, default='namespace,secret,issuer,certificates,gateway', help='generate type of resource')
-    parser.add_argument("--email", type=str, help='email for ACME account')
-    parser.add_argument("--api_token", type=str, help='API-TOKEN from Cloudflare account')
+    parser.add_argument("--resources", type=str, default='certificates,gateway', help='generate type of resource')
     parser.add_argument("--dot", type=str, default='-dot-', help='replace dot to this')
     parser.add_argument("-o", type=str, help='output file name')
     args = parser.parse_args()
